@@ -1,165 +1,144 @@
 You are an experienced backend and integration-focused professional software engineer.
-You are responsible for analyzing, hardening, and **proving the fix via executed tests** for an API behavior regression that has already broken legacy clients.
+You are responsible for analyzing, hardening, and **proving via executed tests** an API behavior regression that has already broken legacy clients.
 
 ---
 
 ## API Change
 
-This is an **API schema instability regression** caused by **context-dependent response fields**.
+This is an **API schema instability regression**.
 
-The API endpoint:
+The endpoint:
 
 * `GET /api/users/<id>`
 
 returns **different response schemas for the same endpoint and method**, depending on request context.
 
-### Observed Behavior
+### Observed Variants
 
-* When a user requests **their own profile**, the response includes the field:
+The same endpoint may return:
 
-  * `email`
-* When a user requests **another user's profile**, the response **omits** the `email` field entirely
-* The API returns **HTTP 200** in both cases
-* There is **no versioning, no feature flag, and no explicit indicator** of schema variance
+1. **200 OK** user object with `email` present (own profile)
+2. **200 OK** user object with `email` missing
+3. **200 OK** user object with `email="***REDACTED***"`
+4. **401** JSON error body (missing/invalid token)
+5. **429** JSON error body with retry information
 
-This behavior is implemented server-side and is not documented as a versioned API change.
+There is **no versioning or explicit indicator** of these differences.
 
 ---
 
-## Legacy Client Assumptions
+## Legacy Client Assumptions (Immutable)
 
 Legacy clients assume:
 
-* `/api/users/<id>` always returns a **stable schema**
-* Field `email` is **always present**
-* Missing fields indicate malformed or incomplete data
-* HTTP 200 implies full schema compatibility
+* Stable schema for successful responses
+* `email` always exists and is a valid email
+* `about_me` is always a string
+* Any non-200 from this endpoint is treated as an outage
 
-These assumptions are now invalid and have already caused production failures.
-
----
-
-## Your Tasks
-
-### 1. Identify the API Change
-
-* Explain why this is an **API change**, not a client bug
-* Clearly describe the schema difference between the two valid responses
-* Explain why this is a **breaking change despite no endpoint or version change**
+These assumptions are now broken.
 
 ---
 
-### 2. API Call Evidence
+## Hard Constraints
 
-Provide **realistic API request and response examples** for:
-
-* Requesting the authenticated user’s own profile
-* Requesting another user’s profile
-
-Highlight the schema difference, explicitly calling out:
-
-* Presence vs absence of the `email` field
-* Why both responses are technically “successful” yet incompatible
+* Backend API behavior **cannot be changed**
+* Legacy client code **cannot be changed**
+* You **must** implement a compatibility layer in front of legacy clients
 
 ---
 
-### 3. Client Impact Analysis
+## Required Compatibility Rules
 
-Explain how legacy clients fail, including:
+### For 200 responses
 
-* Strict deserialization / schema validation failures
-* Null / missing field access
-* Downstream data issues (analytics, caching, enrichment)
+* Missing or redacted `email` → synthesize `<username>@unknown.local`
+* `about_me == null` → `""`
+* Always output:
 
-Each failure must be explicitly tied to the schema difference.
+  * `id, username, email, about_me, last_seen`
+
+### For non-200 responses
+
+Normalize to:
+
+```json
+{ "error": "<short>", "message": "<detail>" }
+```
+
+Classification:
+
+* 401 → `CLIENT_ERROR`
+* 429 → `TRANSIENT`
+* 5xx → `OUTAGE`
+* 2xx → `OK`
+
+All transformations must be **idempotent**.
 
 ---
 
-### 4. Compatibility Hardening Strategy
+## What You Must Deliver
 
-Propose and implement a **concrete compatibility fix without changing the API behavior**, such as:
+### 1. Evidence & Analysis
 
-* Schema normalization or compatibility layer
-* Safe defaults or optional-field handling
-* Defensive parsing strategy
+* API call examples for all variants
+* Schema comparison
+* Client failure analysis tied directly to schema differences
 
-You must justify why your approach is:
+### 2. Compatibility Implementation
 
-* Backward-compatible
-* Safe for existing clients
-* Future-proof against similar schema variance
+Production-quality code implementing:
+
+* `normalize_user_response`
+* `normalize_error_response`
+* `classify_response`
+* Idempotency guarantees
 
 ---
 
 ## Engineering Deliverables (MANDATORY)
 
-You must deliver **all** of the following:
+You must provide:
 
-### 1. README
+### A) README
 
-A concise README that explains:
+Explains:
 
-* The API behavior change
-* Why it breaks legacy clients
-* The chosen compatibility strategy
-* How to set up the environment
-* How to run the tests
-* What test results indicate a successful fix
+* The regression
+* Why it is an API change
+* Compatibility strategy
+* Setup and test instructions
 
-The README must be suitable for a real engineering handoff or audit.
+### B) Reproducible Environment
 
----
+* `requirements.txt` (and optional dev requirements)
 
-### 2. Reproducible Environment
+### C) One-Command Test Runner
 
-Provide a reusable environment setup, such as:
+* Script named `run_tests`
+* Runs all tests
+* Clear PASS/FAIL output
+* Non-zero exit on failure
 
-* `requirements.txt` (or equivalent)
-* Any minimal configuration needed to run the code and tests
+### D) Executed Test Evidence
 
-The environment must be deterministic and reproducible.
+You must **actually run the tests** and include output showing:
 
----
-
-### 3. One-Command Test Runner
-
-Provide a script named:
-
-* `run_tests` (e.g., `run_tests.sh`, `run_tests.py`, or equivalent)
-
-The script must:
-
-* Set up and/or validate the environment
-* Execute all regression tests
-* Print clear PASS / FAIL output
-* Exit with a non-zero status code on failure
-
----
-
-### 4. Executed Test Evidence (REQUIRED)
-
-You must:
-
-* **Actually run the tests**
-* Include the real execution output (or a realistic execution transcript)
-* Demonstrate:
-
-  * Failure under the legacy assumption
-  * Success after applying the compatibility fix
-
-Responses that only describe tests without executing them are considered incomplete.
+* Failure under legacy assumptions
+* Success after compatibility fix
+* Idempotency verification
 
 ---
 
 ## Final Output Must Include
 
-1. API call examples
-2. Schema comparison
+1. API examples
+2. Schema diff
 3. Impact analysis
-4. Compatibility fix implementation
+4. Compatibility fix code
 5. README
-6. Environment setup files
+6. Environment files
 7. `run_tests` script
-8. Actual test execution output
+8. Test execution output
 
-Your response must be technically precise, production-oriented, and directly usable to validate the regression fix in practice.
+Your response must be technically precise, production-oriented, and directly usable.
