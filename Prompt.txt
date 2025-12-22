@@ -5,75 +5,86 @@ You are responsible for analyzing, hardening, and **proving via executed tests**
 
 ## API Change
 
-This is an **API schema instability regression**.
+This is a **confirmed API bug** that results in **schema instability**.
 
 The endpoint:
 
 * `GET /api/users/<id>`
 
-returns **different response schemas for the same endpoint and method**, depending on request context.
+returns **different response structures for the same endpoint and method**, depending on request context.
 
-### Observed Variants
+Returning inconsistent payloads for successful (2xx) responses, without versioning or signaling, violates the API contract and has caused production regressions.
+
+---
+
+## Observed Variants
 
 The same endpoint may return:
 
-1. **200 OK** user object with `email` present (own profile)
+1. **200 OK** user object with `email` present
 2. **200 OK** user object with `email` missing
 3. **200 OK** user object with `email="***REDACTED***"`
-4. **401** JSON error body (missing/invalid token)
-5. **429** JSON error body with retry information
+4. **401** JSON error response (missing/invalid token)
+5. **429** JSON error response with retry information
 
-There is **no versioning or explicit indicator** of these differences.
+There is no explicit indicator distinguishing these variants.
 
 ---
 
-## Legacy Client Assumptions (Immutable)
+## Legacy Client Assumptions (Fixed)
 
 Legacy clients assume:
 
-* Stable schema for successful responses
+* Successful responses have a stable schema
 * `email` always exists and is a valid email
 * `about_me` is always a string
-* Any non-200 from this endpoint is treated as an outage
+* Any non-200 response indicates an outage
 
-These assumptions are now broken.
-
----
-
-## Hard Constraints
-
-* Backend API behavior **cannot be changed**
-* Legacy client code **cannot be changed**
-* You **must** implement a compatibility layer in front of legacy clients
+These assumptions are no longer valid due to the API bug.
 
 ---
 
-## Required Compatibility Rules
+## Constraints
 
-### For 200 responses
+* Backend API behavior cannot be changed
+* Legacy client code cannot be changed
+* A compatibility layer must be introduced to mitigate the bug
 
-* Missing or redacted `email` → synthesize `<username>@unknown.local`
-* `about_me == null` → `""`
-* Always output:
+This layer exists solely to restore a stable contract for legacy consumers.
 
-  * `id, username, email, about_me, last_seen`
+---
 
-### For non-200 responses
+## Compatibility Expectations
 
-Normalize to:
+### Successful Responses (2xx)
+
+* Missing or redacted `email` should be handled so legacy clients remain functional
+* `about_me` must be a string
+* Legacy consumers must see a consistent set of core fields:
+
+  * `id`, `username`, `email`, `about_me`, `last_seen`
+
+How this normalization is implemented is up to you, as long as the contract is restored.
+
+---
+
+### Error Responses
+
+Error responses must be normalized into a legacy-friendly structure:
 
 ```json
 { "error": "<short>", "message": "<detail>" }
 ```
 
-Classification:
+They should also be classified in a way that avoids false production outages (for example, distinguishing client errors and transient conditions from real outages).
 
-* 401 → `CLIENT_ERROR`
-* 429 → `TRANSIENT`
-* 5xx → `OUTAGE`
-* 2xx → `OK`
+---
 
-All transformations must be **idempotent**.
+## Idempotency
+
+Your compatibility logic must be safe to apply multiple times without changing the result.
+
+You are expected to demonstrate this property through tests.
 
 ---
 
@@ -81,52 +92,60 @@ All transformations must be **idempotent**.
 
 ### 1. Evidence & Analysis
 
-* API call examples for all variants
-* Schema comparison
-* Client failure analysis tied directly to schema differences
-
-### 2. Compatibility Implementation
-
-Production-quality code implementing:
-
-* `normalize_user_response`
-* `normalize_error_response`
-* `classify_response`
-* Idempotency guarantees
+* API call examples covering all observed variants
+* A concise schema comparison highlighting breaking differences
+* An explanation of how and why legacy clients fail
 
 ---
 
-## Engineering Deliverables (MANDATORY)
+### 2. Compatibility Implementation
 
-You must provide:
+Provide production-quality code that:
 
-### A) README
+* Normalizes successful user responses
+* Normalizes error responses
+* Classifies responses for monitoring
+* Is deterministic and idempotent
 
-Explains:
+---
 
-* The regression
-* Why it is an API change
-* Compatibility strategy
-* Setup and test instructions
+## Engineering Deliverables (Required)
 
-### B) Reproducible Environment
+### README
 
-* `requirements.txt` (and optional dev requirements)
+Include:
 
-### C) One-Command Test Runner
+* A description of the API bug and its impact
+* The mitigation strategy
+* Key tradeoffs and limitations
+* How to set up the environment
+* How to run and interpret tests
 
-* Script named `run_tests`
-* Runs all tests
-* Clear PASS/FAIL output
-* Non-zero exit on failure
+---
 
-### D) Executed Test Evidence
+### Reproducible Environment
 
-You must **actually run the tests** and include output showing:
+* `requirements.txt`
+* Any additional minimal setup needed to run the solution
+
+---
+
+### One-Command Test Runner
+
+* A script named `run_tests`
+* Runs all tests in one command
+* Clear PASS / FAIL output
+* Non-zero exit code on failure
+
+---
+
+### Executed Test Evidence
+
+You must actually run the tests and include output showing:
 
 * Failure under legacy assumptions
-* Success after compatibility fix
-* Idempotency verification
+* Success after applying the compatibility layer
+* Verification that normalization is idempotent
 
 ---
 
