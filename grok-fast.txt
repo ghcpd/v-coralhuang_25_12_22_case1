@@ -1,0 +1,324 @@
+User: You are an experienced backend and integration-focused professional software engineer.
+You are responsible for analyzing, hardening, and **proving via executed tests** an API behavior regression that has already broken legacy clients.
+
+---
+
+## API Change
+
+This is a **confirmed API bug** that results in **schema instability**.
+
+The endpoint:
+
+* `GET /api/users/<id>`
+
+returns **different response structures for the same endpoint and method**, depending on request context.
+
+Returning inconsistent payloads for successful (2xx) responses, without versioning or signaling, violates the API contract and has caused production regressions.
+
+---
+
+## Observed Variants
+
+The same endpoint may return:
+
+1. **200 OK** user object with `email` present
+2. **200 OK** user object with `email` missing
+3. **200 OK** user object with `email="***REDACTED***"`
+4. **401** JSON error response (missing/invalid token)
+5. **429** JSON error response with retry information
+
+There is no explicit indicator distinguishing these variants.
+
+---
+
+## Legacy Client Assumptions (Fixed)
+
+Legacy clients assume:
+
+* Successful responses have a stable schema
+* `email` always exists and is a valid email
+* `about_me` is always a string
+* Any non-200 response indicates an outage
+
+These assumptions are no longer valid due to the API bug.
+
+---
+
+## Constraints
+
+* Backend API behavior cannot be changed
+* Legacy client code cannot be changed
+* A compatibility layer must be introduced to mitigate the bug
+
+This layer exists solely to restore a stable contract for legacy consumers.
+
+---
+
+## Compatibility Expectations
+
+### Successful Responses (2xx)
+
+* Missing or redacted `email` should be handled so legacy clients remain functional
+* `about_me` must be a string
+* Legacy consumers must see a consistent set of core fields:
+
+  * `id`, `username`, `email`, `about_me`, `last_seen`
+
+How this normalization is implemented is up to you, as long as the contract is restored.
+
+---
+
+### Error Responses
+
+Error responses must be normalized into a legacy-friendly structure:
+
+```json
+{ "error": "<short>", "message": "<detail>" }
+```
+
+They should also be classified in a way that avoids false production outages (for example, distinguishing client errors and transient conditions from real outages).
+
+---
+
+## Idempotency
+
+Your compatibility logic must be safe to apply multiple times without changing the result.
+
+You are expected to demonstrate this property through tests.
+
+---
+
+## What You Must Deliver
+
+### 1. Evidence & Analysis
+
+* API call examples covering all observed variants
+* A concise schema comparison highlighting breaking differences
+* An explanation of how and why legacy clients fail
+
+---
+
+### 2. Compatibility Implementation
+
+Provide production-quality code that:
+
+* Normalizes successful user responses
+* Normalizes error responses
+* Classifies responses for monitoring
+* Is deterministic and idempotent
+
+---
+
+## Engineering Deliverables (Required)
+
+### README
+
+Include:
+
+* A description of the API bug and its impact
+* The mitigation strategy
+* Key tradeoffs and limitations
+* How to set up the environment
+* How to run and interpret tests
+
+---
+
+### Reproducible Environment
+
+* `requirements.txt`
+* Any additional minimal setup needed to run the solution
+
+---
+
+### One-Command Test Runner
+
+* A script named `run_tests`
+* Runs all tests in one command
+* Clear PASS / FAIL output
+* Non-zero exit code on failure
+
+---
+
+### Executed Test Evidence
+
+You must actually run the tests and include output showing:
+
+* Failure under legacy assumptions
+* Success after applying the compatibility layer
+* Verification that normalization is idempotent
+
+---
+
+## Final Output Must Include
+
+1. API examples
+2. Schema diff
+3. Impact analysis
+4. Compatibility fix code
+5. README
+6. Environment files
+7. `run_tests` script
+8. Test execution output
+
+Your response must be technically precise, production-oriented, and directly usable.
+
+
+GitHub Copilot: Created [](file:///c%3A/Bug_Bash/25_12_22/v-coralhuang_25_12_22_case1/compatibility.py)
+
+Created [](file:///c%3A/Bug_Bash/25_12_22/v-coralhuang_25_12_22_case1/test_compatibility.py)
+
+Created [](file:///c%3A/Bug_Bash/25_12_22/v-coralhuang_25_12_22_case1/requirements.txt)
+
+Created [](file:///c%3A/Bug_Bash/25_12_22/v-coralhuang_25_12_22_case1/run_tests.bat)
+
+Created [](file:///c%3A/Bug_Bash/25_12_22/v-coralhuang_25_12_22_case1/README.md)
+
+Ran terminal command: pip install -r requirements.txt
+
+Configuring a Python Environment
+Completed with input: {
+  "resourcePath": "c:\\Bug_Bash\\25_12_22\\v-coralhuang_25_12_22_case1"
+}
+
+Creating a Virtual Environment
+Completed with input: {
+  "resourcePath": "c:\\Bug_Bash\\25_12_22\\v-coralhuang_25_12_22_case1"
+}
+
+Installing pytest in Python 3.14.0 (.venv)
+Completed with input: {
+  "packageList": [
+    "pytest"
+  ],
+  "resourcePath": "c:\\Bug_Bash\\25_12_22\\v-coralhuang_25_12_22_case1"
+}
+
+Ran terminal command: .\run_tests.bat
+
+## API Behavior Regression Analysis
+
+### API Call Examples
+
+The endpoint `GET /api/users/<id>` returns inconsistent schemas based on authorization context and privacy policies:
+
+**Variant A: Self-profile (200 OK)**
+```json
+{
+    "id": 1,
+    "username": "alice", 
+    "email": "alice@example.com",
+    "about_me": "Hello, I'm Alice",
+    "last_seen": "2024-12-01T10:00:00Z",
+    "_links": {"self": "/api/users/1"}
+}
+```
+
+**Variant B: Other user profile (200 OK)**
+```json
+{
+    "id": 2,
+    "username": "bob",
+    "about_me": "Hi, I'm Bob", 
+    "last_seen": "2024-11-30T18:20:00Z",
+    "_links": {"self": "/api/users/2"}
+}
+```
+
+**Variant C: Privacy-redacted profile (200 OK)**
+```json
+{
+    "id": 3,
+    "username": "carol",
+    "email": "***REDACTED***",
+    "about_me": null,
+    "last_seen": "2024-11-28T08:00:00Z", 
+    "_links": {"self": "/api/users/3"}
+}
+```
+
+**Variant D: Unauthorized access (401)**
+```json
+{
+    "error": "Unauthorized",
+    "message": "Missing or invalid token"
+}
+```
+
+**Variant E: Rate limited (429)**
+```json
+{
+    "error": "Too Many Requests",
+    "message": "Rate limit exceeded", 
+    "retry_after_seconds": 2
+}
+```
+
+### Schema Comparison
+
+**Expected Legacy Schema (Successful 200):**
+```json
+{
+    "id": "integer",
+    "username": "string", 
+    "email": "string (valid email format)",
+    "about_me": "string (never null)",
+    "last_seen": "string (ISO-8601)"
+}
+```
+
+**Breaking Differences:**
+- **Variant B**: Missing `email` field entirely
+- **Variant C**: `email` present but ` "***REDACTED***"` (invalid format) + `about_me: null`
+- **Variants D/E**: Completely different error schema instead of user object
+
+### Impact Analysis
+
+Legacy clients fail because they assume stable successful responses with:
+- All required fields present
+- `email` containing '@' for validation
+- `about_me` as non-null string for display
+
+**Failure Modes:**
+1. **KeyError** on missing `email` access
+2. **TypeError** on null `about_me` string operations  
+3. **ValidationError** on redacted email format
+4. **False outage alerts** for 401/429 treated as service failures
+
+## Compatibility Implementation
+
+The compatibility layer in compatibility.py provides deterministic normalization:
+
+- **Successful responses**: Synthesize missing/redacted emails, convert null `about_me` to `""`
+- **Error responses**: Standardize to `{"error": "...", "message": "..."}` with monitoring classifications
+- **Idempotent**: Safe to apply multiple times without side effects
+
+## Executed Test Evidence
+
+```
+=================================== test session starts ===================================
+platform win32 -- Python 3.14.0, pytest-8.2.2, pluggy-1.6.0 -- C:\Users\v-coralhuang\AppData
+\Local\Programs\Python\Python314\python.exe                                                 cachedir: .pytest_cache
+rootdir: C:\Bug_Bash\25_12_22\v-coralhuang_25_12_22_case1
+plugins: anyio-3.7.1, cov-7.0.0, timeout-2.4.0
+collected 7 items                                                                          
+
+test_compatibility.py::TestCompatibilityLayer::test_variant_a_full_response PASSED   [ 14%]
+test_compatibility.py::TestCompatibilityLayer::test_variant_b_missing_email PASSED   [ 28%]
+test_compatibility.py::TestCompatibilityLayer::test_variant_c_redacted_email PASSED  [ 42%]
+test_compatibility.py::TestCompatibilityLayer::test_variant_d_unauthorized PASSED    [ 57%]
+test_compatibility.py::TestCompatibilityLayer::test_variant_e_rate_limited PASSED    [ 71%]
+test_compatibility.py::TestCompatibilityLayer::test_idempotency PASSED               [ 85%]
+test_compatibility.py::TestCompatibilityLayer::test_legacy_failures_without_normalization PASSED [100%]                                                                                 
+==================================== 7 passed in 0.18s ====================================
+```
+
+**Test Results Summary:**
+- ✅ All 7 tests pass
+- ✅ Demonstrates raw responses fail legacy compatibility  
+- ✅ Shows normalized responses pass legacy checks
+- ✅ Verifies idempotency (double-normalization unchanged)
+- ✅ Covers all observed API variants
+
+The compatibility layer successfully restores stable contracts for legacy consumers while preserving monitoring capabilities through response classification.
+
+Made changes.
