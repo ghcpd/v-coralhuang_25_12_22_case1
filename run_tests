@@ -1,0 +1,18 @@
+"""Run the full test-suite and print a clear PASS / FAIL summary.
+
+Usage (Windows):
+  python run_tests
+
+Exits with non-zero code on test failures.
+"""
+import sys
+import pytest
+
+if __name__ == "__main__":
+    # -q for concise output, --maxfail=1 to fail fast in CI
+    rc = pytest.main(["-q"])
+    if rc == 0:
+        print("\n✅ ALL TESTS PASSED\n")
+    else:
+        print(f"\n❌ TESTS FAILED (exit code={rc})\n")
+    sys.exit(rc)
