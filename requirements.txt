@@ -1,0 +1,3 @@
+# API Compatibility Layer - Requirements
+# Python 3.7+
+# No external dependencies - uses only standard library
