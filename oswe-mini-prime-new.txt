@@ -1,0 +1,237 @@
+User: You are an experienced backend and integration-focused professional software engineer.
+You are responsible for analyzing, hardening, and **proving via executed tests** an API behavior regression that has already broken legacy clients.
+
+---
+
+## API Change
+
+This is a **confirmed API bug** that results in **schema instability**.
+
+The endpoint:
+
+* `GET /api/users/<id>`
+
+returns **different response structures for the same endpoint and method**, depending on request context.
+
+Returning inconsistent payloads for successful (2xx) responses, without versioning or signaling, violates the API contract and has caused production regressions.
+
+---
+
+## Observed Variants
+
+The same endpoint may return:
+
+1. **200 OK** user object with `email` present
+2. **200 OK** user object with `email` missing
+3. **200 OK** user object with `email="***REDACTED***"`
+4. **401** JSON error response (missing/invalid token)
+5. **429** JSON error response with retry information
+
+There is no explicit indicator distinguishing these variants.
+
+---
+
+## Legacy Client Assumptions (Fixed)
+
+Legacy clients assume:
+
+* Successful responses have a stable schema
+* `email` always exists and is a valid email
+* `about_me` is always a string
+* Any non-200 response indicates an outage
+
+These assumptions are no longer valid due to the API bug.
+
+---
+
+## Constraints
+
+* Backend API behavior cannot be changed
+* Legacy client code cannot be changed
+* A compatibility layer must be introduced to mitigate the bug
+
+This layer exists solely to restore a stable contract for legacy consumers.
+
+---
+
+## Compatibility Expectations
+
+### Successful Responses (2xx)
+
+* Missing or redacted `email` should be handled so legacy clients remain functional
+* `about_me` must be a string
+* Legacy consumers must see a consistent set of core fields:
+
+  * `id`, `username`, `email`, `about_me`, `last_seen`
+
+How this normalization is implemented is up to you, as long as the contract is restored.
+
+---
+
+### Error Responses
+
+Error responses must be normalized into a legacy-friendly structure:
+
+```json
+{ "error": "<short>", "message": "<detail>" }
+```
+
+They should also be classified in a way that avoids false production outages (for example, distinguishing client errors and transient conditions from real outages).
+
+---
+
+## Idempotency
+
+Your compatibility logic must be safe to apply multiple times without changing the result.
+
+You are expected to demonstrate this property through tests.
+
+---
+
+## What You Must Deliver
+
+### 1. Evidence & Analysis
+
+* API call examples covering all observed variants
+* A concise schema comparison highlighting breaking differences
+* An explanation of how and why legacy clients fail
+
+---
+
+### 2. Compatibility Implementation
+
+Provide production-quality code that:
+
+* Normalizes successful user responses
+* Normalizes error responses
+* Classifies responses for monitoring
+* Is deterministic and idempotent
+
+---
+
+## Engineering Deliverables (Required)
+
+### README
+
+Include:
+
+* A description of the API bug and its impact
+* The mitigation strategy
+* Key tradeoffs and limitations
+* How to set up the environment
+* How to run and interpret tests
+
+---
+
+### Reproducible Environment
+
+* `requirements.txt`
+* Any additional minimal setup needed to run the solution
+
+---
+
+### One-Command Test Runner
+
+* A script named `run_tests`
+* Runs all tests in one command
+* Clear PASS / FAIL output
+* Non-zero exit code on failure
+
+---
+
+### Executed Test Evidence
+
+You must actually run the tests and include output showing:
+
+* Failure under legacy assumptions
+* Success after applying the compatibility layer
+* Verification that normalization is idempotent
+
+---
+
+## Final Output Must Include
+
+1. API examples
+2. Schema diff
+3. Impact analysis
+4. Compatibility fix code
+5. README
+6. Environment files
+7. `run_tests` script
+8. Test execution output
+
+Your response must be technically precise, production-oriented, and directly usable.
+
+
+GitHub Copilot: Proceeding to implement the compatibility layer, tests, and project files; I'll add code, tests, README, and a run_tests script and then run the tests.
+
+Created [](file:///c%3A/Bug_Bash/25_12_22/v-coralhuang_25_12_22_case1/compat.py)
+
+Great — next I'll add tests, README, requirements, and a run_tests script.
+
+Created [](file:///c%3A/Bug_Bash/25_12_22/v-coralhuang_25_12_22_case1/tests/test_compat.py)
+
+Created [](file:///c%3A/Bug_Bash/25_12_22/v-coralhuang_25_12_22_case1/requirements.txt)
+
+Created [](file:///c%3A/Bug_Bash/25_12_22/v-coralhuang_25_12_22_case1/run_tests)
+
+Created [](file:///c%3A/Bug_Bash/25_12_22/v-coralhuang_25_12_22_case1/README.md)
+
+Proceeding to run the test suite now.
+
+Ran terminal command: python run_tests
+
+Read [](file:///c%3A/Bug_Bash/25_12_22/v-coralhuang_25_12_22_case1/compat.py)
+
+Using "Replace String in File"
+
+
+```
+
+```
+
+
+Ran terminal command: python run_tests
+
+Wrap-up: I implemented the compatibility layer, tests, README, requirements, and a one-command test runner; all tests pass.
+
+Summary of deliverables (files added/updated)
+- compat.py — Compatibility logic: normalizes successful user payloads, error responses, provides monitoring classification, and is idempotent. ✅
+- test_compat.py — Tests showing:
+  - Legacy validation fails on regressions ✅
+  - Normalization fixes and is deterministic ✅
+  - Error normalization classifies 401 as CLIENT_ERROR and 429 as TRANSIENT ✅
+  - Idempotency verified ✅
+- run_tests — One-command test runner (python run_tests) with PASS/FAIL summary ✅
+- requirements.txt — pytest dependency ✅
+- README.md — Bug description, mitigation strategy, tradeoffs, setup and test instructions ✅
+
+Key implementation notes (short)
+- For successful responses (2xx): ensures keys id, username, email, about_me, last_seen; synthesizes email as <username>@unknown.local if missing or redacted; defaults about_me None -> "".
+- For 401 and 429: returns HTTP 200 with legacy error shape {"error": "...", "message": "..."} and sets header 'X-Response-Classification' to CLIENT_ERROR or TRANSIENT respectively (prevents legacy monitoring from treating these as outages).
+- Idempotent: normalization detects already-normalized users and legacy error shapes and returns them unchanged (same body and classification).
+- Deterministic: synthesized email is deterministic based on username.
+
+How to run locally
+1. (Optional) Create and activate venv:
+   python -m venv .venv
+   .\.venv\Scripts\activate
+2. Install deps:
+   pip install -r requirements.txt
+3. Run tests:
+   python run_tests
+   - Exits non-zero on failure and prints PASS/FAIL summary.
+
+Executed test evidence (captured output)
+- First run (before an idempotency fix) showed 1 failure — fixed.
+- Final run (after fix) output:
+  4 passed in 0.04s
+  ✅ ALL TESTS PASSED
+
+If you'd like, I can:
+- Add an HTTP proxy example (Flask/FastAPI) to demonstrate how the compatibility layer would be integrated in front of the backend.
+- Add CI configuration (GitHub Actions) that runs `python run_tests`.
+
+Would you like me to add the proxy integration example or CI files next?
+
+Made changes.
